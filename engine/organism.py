@@ -1,9 +1,11 @@
+from copy import deepcopy
 from dataclasses import dataclass
 
 import numpy as np
 from scipy.special import softmax
 
 from engine.nn import NeuralNetworkLayer, MSELoss
+
 
 @dataclass
 class Action:
@@ -25,7 +27,7 @@ class Organism(object):
     def __init__(self, d_in, d_latent, num_actions, learning_rate: float, memory_size: int = 0):
         self.init_learning_rate = learning_rate
         self.sensor = NeuralNetworkLayer(d_in, d_latent, alpha=learning_rate)
-        self.actor = NeuralNetworkLayer(d_latent, num_actions, alpha=learning_rate, prev=self.sensor)
+        self.actor = NeuralNetworkLayer(d_latent, num_actions, alpha=learning_rate, prev=self.sensor, name="actor")
 
         self.memory_size = memory_size
         self.memory = []
@@ -46,11 +48,12 @@ class Organism(object):
         if len(self.memory) >= self.memory_size:
             self.memory.pop(0)
 
-    def mutate(self):
+    def mutate(self, scale: float = 0.01):
         """in-place mutation of the organism's neural network weights and biases."""
-        # for layer in self.nn:
-        #     layer.mutate(scale=0.05)
-        ...
+        for layer in traverse_layers(self.sensor):
+            # if layer.name == "actor":  # TODO: exclude actor?
+            #     continue
+            layer.mutate(scale)
 
     def learn(self, gamma: float = 0.99):
         """
@@ -127,7 +130,6 @@ class Organism(object):
         return sig_self == sig_other
 
 
-from copy import deepcopy
 
 def traverse_layers(root_layer):
     """Yield all layers in the graph starting from root_layer (DFS, avoids duplicates)."""
