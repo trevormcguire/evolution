@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 from copy import deepcopy
 from dataclasses import dataclass
 
 import numpy as np
 from scipy.special import softmax
 
-from engine.nn import NeuralNetworkLayer, MSELoss
+from engine.nn import NeuralNetworkLayer, MSELoss, traverse_layers
 
 
 @dataclass
@@ -94,7 +96,7 @@ class Organism(object):
             loss_grad = self.sensor.backward(loss_grad.reshape(1, -1))
             self.sensor.update_params()
 
-    def compatible_with(self, other: "Organism") -> bool:
+    def compatible_with(self, other: Organism) -> bool:
         """
         Compare the architecture and connections of the sensor neural network
         between this organism and another. Returns True if identical, else False.
@@ -130,44 +132,54 @@ class Organism(object):
         return sig_self == sig_other
 
 
+    def mate(self, other: Organism, p: float = 0.5) -> Organism:
+        """
+        Reproduce with another organism by mixing weights and biases.
+        
+        Args:
+            other (Organism): The other organism to mate with.
+            p (float): Probability of inheriting from this organism's weights/biases.
+                
+        """
+        if not self.compatible_with(other):
+            print("Organisms are not compatible for mating.")
+            return None
 
-def traverse_layers(root_layer):
-    """Yield all layers in the graph starting from root_layer (DFS, avoids duplicates)."""
-    visited = set()
-    stack = [root_layer]
-    while stack:
-        layer = stack.pop()
-        if id(layer) in visited:  # prevent cycles. TODO: allow, for more complexity?
-            continue
-        visited.add(id(layer))
-        yield layer
-        # Traverse next layers (children)
-        nexts = layer.get_next()
-        if isinstance(nexts, list):
-            stack.extend(nexts)
-        elif nexts is not None:
-            stack.append(nexts)
+        child = deepcopy(self)
 
-def mate(a: Organism, b: Organism, p: float = 0.05) -> "Organism":
-    if not a.compatible_with(b):
-        print("Organisms are not compatible for mating.")
-        return None
+        # Traverse both graphs in the same order (assumes identical structure)
+        layers_a = list(traverse_layers(self.sensor))
+        layers_b = list(traverse_layers(other.sensor))
+        layers_child = list(traverse_layers(child.sensor))
+        assert len(layers_a) == len(layers_b) == len(layers_child)
 
-    child = deepcopy(a)
+        for layer_a, layer_b, layer_child in zip(layers_a, layers_b, layers_child):
+            # Mix weights
+            mask_w = (np.random.rand(*layer_a.w.shape) < p)
+            layer_child.w = np.where(mask_w, layer_a.w, layer_b.w)
+            # Mix biases
+            mask_b = (np.random.rand(*layer_a.b.shape) < p)
+            layer_child.b = np.where(mask_b, layer_a.b, layer_b.b)
 
-    # Traverse both graphs in the same order (assumes identical structure)
-    layers_a = list(traverse_layers(a.sensor))
-    layers_b = list(traverse_layers(b.sensor))
-    layers_child = list(traverse_layers(child.sensor))
-    assert len(layers_a) == len(layers_b) == len(layers_child)
+        child.mutate()
+        return child
 
-    for layer_a, layer_b, layer_child in zip(layers_a, layers_b, layers_child):
-        # Mix weights
-        mask_w = (np.random.rand(*layer_a.w.shape) < p)
-        layer_child.w = np.where(mask_w, layer_a.w, layer_b.w)
-        # Mix biases
-        mask_b = (np.random.rand(*layer_a.b.shape) < p)
-        layer_child.b = np.where(mask_b, layer_a.b, layer_b.b)
 
-    child.mutate()
-    return child
+class Species:
+    """Represents a group of organisms"""
+    def __init__(self):
+        ...
+
+
+class Population:
+    """Represents a collection of species"""
+    def __init__(self):
+        self.species = []
+
+    def add_species(self, species: Species):
+        self.species.append(species)
+
+    def evolve(self):
+        for species in self.species:
+            # Implement evolution logic here
+            pass

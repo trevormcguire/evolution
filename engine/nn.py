@@ -160,6 +160,24 @@ class NeuralNetworkLayer(object):
         self.b += np.random.normal(0, scale, self.b.shape)
 
 
+def traverse_layers(root_layer: NeuralNetworkLayer):
+    """Yield all layers in the graph starting from root_layer (DFS, avoids duplicates)."""
+    visited = set()
+    stack = [root_layer]
+    while stack:
+        layer = stack.pop()
+        if id(layer) in visited:  # prevent cycles. TODO: allow, for more complexity?
+            continue
+        visited.add(id(layer))
+        yield layer
+        # Traverse next layers (children)
+        nexts = layer.get_next()
+        if isinstance(nexts, list):
+            stack.extend(nexts)
+        elif nexts is not None:
+            stack.append(nexts)
+
+
 class MSELoss:
     """
     Mean Squared Error
@@ -185,3 +203,5 @@ class MSELoss:
         dinputs = -2 * (y - yhat) / num_outputs #gradient
         dinputs = dinputs / num_samples #normalize
         return dinputs
+
+
