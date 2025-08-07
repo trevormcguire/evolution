@@ -56,7 +56,7 @@ from enum import Enum
 # if the organisms moved a bunch, reward can be better sight
 # if the organism reproduced a bunch, a reward could be ... 
 # better attributes (like sight) require more energy, which requires more resources
-class ActionType(Enum):
+class ActionType(str, Enum):
     MOVE_LEFT = "move_left",
     MOVE_RIGHT = "move_right",
     MOVE_UP = "move_up",
@@ -95,20 +95,18 @@ class GridWorld:
             ResourceMap(self.h ,self.w, nc=self.resource_config.nc, std=self.resource_config.std) for _ in range(self.resource_config.n)
         ]
 
-    def get_state(self, x, y, horizon: int = 0):
+
+    def get_state_resource_map(self, x, y, horizon: int = 0, flatten: bool = True):
         """
-        Return the resource quantities at the current position and in the cardinal directions
-        up to the given horizon. For horizon=1, returns resources at (x, y), (x-1, y), (x+1, y), (x, y-1), (x, y+1).
+        Return the resource quantities in a square region centered at (x, y) with the given horizon.
+        For horizon=1, returns a 3x3 region; for horizon=2, a 5x5 region, etc.
         Output shape: (num_resources, num_positions)
         """
-        offsets = [(0, 0)]  # Always include current position
-        for h in range(1, horizon + 1):
-            offsets.extend([
-                (-h, 0),  # left
-                (h, 0),   # right
-                (0, -h),  # up
-                (0, h),   # down
-            ])
+        region_size = 2 * horizon + 1
+        offsets = []
+        for dx in range(-horizon, horizon + 1):
+            for dy in range(-horizon, horizon + 1):
+                offsets.append((dx, dy))
         positions = []
         for dx, dy in offsets:
             nx, ny = x + dx, y + dy
@@ -125,13 +123,36 @@ class GridWorld:
                     resource_vals.append(r.qty[pos[1], pos[0]])
                 else:
                     resource_vals.append(0.0)  # Or np.nan if you prefer
+            if not flatten:
+                resource_vals = np.array(resource_vals).reshape(region_size, region_size)
             states.append(resource_vals)
         # Output: (num_resources, num_positions)
         return np.array(states)
 
-    def step(self, population):
-        """Simulate one step in the world."""
-        for organism in population:
-            # Update organism's position, collect resources, etc.
-            pass
+    def get_states(self, x, y, horizon: int = 0, flatten: bool = True):
+        # flatten to 1d for the neural nets for now?
+        # always return horizon = 0? and if horizon = 2 always return 0 and 1, as well?
+        # otherwise nn input layer won't be persisted. 
+        # so we'll need to implement concat and backprop for concat. 
+        state_resource_map = self.get_state_resource_map(x, y, horizon, flatten=flatten)
+        return {"resource_map": state_resource_map}
 
+    def organism_step(self, organism, action):
+        ...
+
+    def step(self, action: str):
+        """Simulate one step in the world."""
+        if action not in ActionType:
+            raise ValueError(f"Invalid action: {action}")
+        # # Update organism's position based on action
+        # if action == ActionType.MOVE_LEFT:
+        #     organism.position = (max(0, organism.position[0] - 1), organism.position[1])
+        # elif action == ActionType.MOVE_RIGHT:
+
+
+# class WorldMap:
+
+    
+#     def __init__(self, word: GridWorld, populations: list):
+#         self.grid_world = word
+#         self.populations = populations

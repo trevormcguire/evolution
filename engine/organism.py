@@ -37,6 +37,11 @@ class Organism(object):
         initial_energy: int = 100,
     ):
         self.init_learning_rate = learning_rate
+        # d_in is a product of horizon, at least for resources.
+        # inputs: resource map, energy required, population of current tile. 
+        # tile 'hardness' is governed by how many resources are available on the tile.
+        # d_in will need to be flattened to a 1D vector (for now).
+        # should be calculable: 
         self.sensor = NeuralNetworkLayer(d_in, d_latent, alpha=learning_rate)
         self.actor = NeuralNetworkLayer(d_latent, num_actions, alpha=learning_rate, prev=self.sensor, name="actor")
 
@@ -44,6 +49,15 @@ class Organism(object):
         self.memory = []
         self.horizon = horizon
         self.energy = initial_energy
+        # energy required to perform actions, reproduce is a function of the number parameters in self.sensor.
+
+
+    def count_sensor_params(self) -> int:
+        """Count total number of parameters (weights + biases) in the sensor NN graph."""
+        total = 0
+        for layer in traverse_layers(self.sensor):
+            total += np.prod(layer.w.shape) + np.prod(layer.b.shape)
+        return total
 
     def observe(self, state: np.ndarray):
         # the latent space represents how the organism perceives the environment
@@ -60,7 +74,7 @@ class Organism(object):
         self.memory.append(transition)
         if len(self.memory) >= self.memory_size:
             self.memory.pop(0)
-
+ 
     def mutate(self, scale: float = 0.01):
         """in-place mutation of the organism's neural network weights and biases."""
         for layer in traverse_layers(self.sensor):
