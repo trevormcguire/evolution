@@ -26,13 +26,24 @@ class StateTransition:
 
 
 class Organism(object):
-    def __init__(self, d_in, d_latent, num_actions, learning_rate: float, memory_size: int = 0):
+    def __init__(
+        self,
+        d_in: int,
+        d_latent: int,
+        num_actions: int,
+        learning_rate: float,
+        memory_size: int = 0,
+        horizon: int = 0,
+        initial_energy: int = 100,
+    ):
         self.init_learning_rate = learning_rate
         self.sensor = NeuralNetworkLayer(d_in, d_latent, alpha=learning_rate)
         self.actor = NeuralNetworkLayer(d_latent, num_actions, alpha=learning_rate, prev=self.sensor, name="actor")
 
         self.memory_size = memory_size
         self.memory = []
+        self.horizon = horizon
+        self.energy = initial_energy
 
     def observe(self, state: np.ndarray):
         # the latent space represents how the organism perceives the environment
@@ -164,22 +175,53 @@ class Organism(object):
         child.mutate()
         return child
 
+# class Species:
+#     """Represents a group of organisms. A species can evolve."""
+#     def __init__(self):
+#         ...
 
-class Species:
-    """Represents a group of organisms"""
-    def __init__(self):
-        ...
+class Population(object):
+    """Collection of Organisms. A population can evolve."""
+    def __init__(self, members: list[Organism]):
+        self.members = members
+        self.size = len(members)
+        self.holdout = max(1, int(np.sqrt(self.size)))
 
+    def step(self, states: np.ndarray, proba: bool = False) -> np.ndarray:
+        assert states.shape[0] == self.size
+        actions = []
+        for idx in range(self.size):
+            p_action = self.members[idx].predict(states[idx])
+            if proba:
+                actions.append(p_action)
+            else:
+                actions.append(np.argmax(p_action, axis=-1))
+        return np.array(actions)
+    
+    def argsort(self, idxs):
+        return [self.members[i] for i in idxs]
+    
+    def evolve(self, rewards: np.ndarray, **kwargs):
+        assert len(rewards) == self.size
+        grads = kwargs.get("grads", [None]*self.size)
+        for o, r, g in zip(self.members, rewards, grads):
+            o.fitness = r
+            o.fitness_grads = g
+        self.members = [self.members[i] for i in np.argsort(rewards)[::-1]]
+        new_population = []
+        for idx in range(self.size):
+            parent_1_idx = idx % self.holdout
+            parent_2_idx = min(self.size - 1, int(np.random.exponential(self.holdout)))
+            offspring = self.members[parent_1_idx].mate(self.members[parent_2_idx])
+            new_population.append(offspring)
+        # if keep_best:
+        new_population[-1] = self.members[0] # Ensure best organism survives
+        self.members = new_population
 
-class Population:
-    """Represents a collection of species"""
-    def __init__(self):
-        self.species = []
-
-    def add_species(self, species: Species):
-        self.species.append(species)
-
-    def evolve(self):
-        for species in self.species:
-            # Implement evolution logic here
-            pass
+    def merge(self, other: Population):
+        # need to ensure model architecture is the same
+        for (aw, ab), (bw, bb) in zip(self.members[0].model.get_params(), other.members[0].model.get_params()):
+            assert (aw.shape == bw.shape) and (ab.shape == bb.shape)
+        self.members += other.members
+        self.size = len(self.members)
+        self.holdout = max(1, int(np.sqrt(self.size)))
